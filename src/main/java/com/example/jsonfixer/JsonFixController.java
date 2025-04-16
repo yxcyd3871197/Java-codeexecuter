@@ -5,8 +5,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader; // Import RequestHeader
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
+import org.slf4j.Logger; // Import Logger
+import org.slf4j.LoggerFactory; // Import LoggerFactory
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,6 +16,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 @RestController
 public class JsonFixController {
+
+    private static final Logger log = LoggerFactory.getLogger(JsonFixController.class); // Logger instance
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -23,14 +27,19 @@ public class JsonFixController {
 
     @PostMapping("/fix-json")
     public ResponseEntity<String> fixJson(
-            @RequestHeader(value = "X-API-KEY", required = false) String providedApiKey, // Get API key from header
+            @RequestHeader(value = "X-API-KEY", required = true) String providedApiKey, // Header is now required
             @RequestBody String potentiallyMalformedJson) {
+
+        // Log the received and expected keys for debugging (avoid logging sensitive keys in production long-term)
+        log.info("Received X-API-KEY: '{}'", providedApiKey); // Log received key
+        log.info("Expected API Key configured: '{}'", expectedApiKey != null && !expectedApiKey.isBlank() ? "Present" : "MISSING/BLANK"); // Log if expected key is present
 
         // Check API Key
         if (expectedApiKey == null || expectedApiKey.isBlank() || !expectedApiKey.equals(providedApiKey)) {
+             log.warn("API Key validation failed. Provided: '{}', Expected: '{}'", providedApiKey, expectedApiKey); // Log failure details
              ObjectNode errorJson = objectMapper.createObjectNode();
              errorJson.put("error", "Unauthorized");
-             errorJson.put("details", "Valid X-API-KEY header is required.");
+             errorJson.put("details", "Invalid or missing X-API-KEY header."); // Slightly updated details message
              try {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(objectMapper.writeValueAsString(errorJson));
              } catch (JsonProcessingException ex) {
