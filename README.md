@@ -49,10 +49,11 @@ The application will be accessible at `http://localhost:8080`.
 
 ## Configuration
 
-The application requires an API key for authorization. This key is configured via the `jsonfixer.api.key` property.
+The application requires an API key for authorization. This key is configured via the `jsonfixer.api.key` property defined in `src/main/resources/application.properties`.
 
--   **Environment Variable (Recommended for Deployment):** Set the `JSONFIXER_API_KEY` environment variable when running the application (e.g., in your Cloud Run service configuration).
+-   **Environment Variable (Recommended for Deployment):** Set the environment variable named exactly `JSONFIXER_API_KEY` when running the application (e.g., in your Cloud Run service configuration). This overrides any value in `application.properties`.
     ```bash
+    # Example for local run:
     export JSONFIXER_API_KEY="your-secure-api-key"
     java -jar target/json-fixer-*.jar
     # Or set it in the Docker/Cloud Run environment settings
@@ -61,76 +62,99 @@ The application requires an API key for authorization. This key is configured vi
 
 ## Testing the Endpoint
 
-You need to provide the configured API key in the `X-API-KEY` header with your requests. Replace `your-secure-api-key` with the actual key you configured.
-
-You can use `curl` or any API client (like Postman) to test the `/fix-json` endpoint.
-
-**Example Request (Malformed JSON with API Key):**
-
-```bash
-curl -X POST http://localhost:8080/fix-json \
--H "Content-Type: text/plain" \
--H "X-API-KEY: your-secure-api-key" \
--d '{
-"name": "Test \"Product\"",
-"description": "This contains a newline\nand typographic quotes like “these”.",
-"valid": true
-}'
-```
-
-**Expected Response (Repaired JSON):**
+You need to provide the configured API key in the `X-API-KEY` header and send the request body as `application/json` with the following structure:
 
 ```json
 {
-"name": "Test \"Product\"",
-"description": "This contains a newline\\nand typographic quotes like \"these\".",
-"valid": true
+  "data": "string_containing_potentially_malformed_json"
 }
 ```
 
-**Example Request (Unfixable JSON):**
+Replace `your-secure-api-key` with the actual key you configured.
+
+**Example Request (Malformed JSON String within JSON Body):**
+
+This example uses the malformed string from your previous test case within the required JSON structure.
 
 ```bash
+curl -X POST http://localhost:8080/fix-json \
+-H "Content-Type: application/json" \
+-H "X-API-KEY: your-secure-api-key" \
+-d '{
+"data": "{ \"text\": \"Hallo \\\"Welt\\\" – dies ist ein Test mit \\“komischen\\” Zeichen und Zeilen\\numbrüchen.\\\" }"
+}'
+```
+
+**Expected Response (Repaired JSON String as Plain Text):**
+
+```json
+{ "text": "Hallo \"Welt\" – dies ist ein Test mit \"komischen\" Zeichen und Zeilen\numbrüchen." }
+```
+*(Note: The response `Content-Type` is `text/plain`, containing the repaired JSON string)*
+
 **Example Request (Missing/Invalid API Key):**
 
 ```bash
 curl -X POST http://localhost:8080/fix-json \
--H "Content-Type: text/plain" \
+-H "Content-Type: application/json" \
 -H "X-API-KEY: invalid-key" \
--d '{"test": 1}'
+-d '{"data": "some string"}'
 
 # Or without the header:
 curl -X POST http://localhost:8080/fix-json \
--H "Content-Type: text/plain" \
--d '{"test": 1}'
+-H "Content-Type: application/json" \
+-d '{"data": "some string"}'
 ```
 
-**Expected Response (Unauthorized):**
+**Expected Response (Unauthorized - JSON):**
 
 ```json
 {
   "error": "Unauthorized",
-  "details": "Valid X-API-KEY header is required."
+  "details": "Invalid or missing X-API-KEY header."
 }
 ```
+*(Note: Error responses are `application/json`)*
 
-**Example Request (Unfixable JSON with Valid API Key):**
+**Example Request (Invalid Input JSON Format):**
 
 ```bash
 curl -X POST http://localhost:8080/fix-json \
--H "Content-Type: text/plain" \
+-H "Content-Type: application/json" \
 -H "X-API-KEY: your-secure-api-key" \
--d 'This is not json { name: \"test\" '
+-d '{"wrong_field": "some string"}' # Missing the 'data' field
 ```
 
-**Expected Response (Error):**
+**Expected Response (Bad Request - JSON):**
+
+```json
+{
+  "error": "Invalid input format.",
+  "details": "Request body must be JSON with a 'data' field containing the string to fix."
+}
+```
+
+**Example Request (Unfixable String within 'data'):**
+
+```bash
+curl -X POST http://localhost:8080/fix-json \
+-H "Content-Type: application/json" \
+-H "X-API-KEY: your-secure-api-key" \
+-d '{
+"data": "This is just text, not json { nope"
+}'
+```
+
+**Expected Response (Bad Request - JSON):**
 
 ```json
 {
   "error": "Failed to parse JSON after attempting repairs.",
-  "details": "Unexpected character ('n' (code 110)): was expecting double-quote to start field name\n at [Source: (String)\"{ name: \"test\" \"; line: 1, column: 4]"
+  "original_input": "This is just text, not json { nope",
+  "attempted_fix": "This is just text, not json { nope",
+  "details": "Unexpected end-of-input: expected close marker for Object (start marker at [Source: (String)\"This is just text, not json { nope\"; line: 1, column: 30])\n at [Source: (String)\"This is just text, not json { nope\"; line: 1, column: 36]"
 }
-# Note: The exact error message might vary slightly based on the input and Jackson version.
+# Note: The exact error message might vary.
 ```
 
 
@@ -169,13 +193,13 @@ curl -X POST http://localhost:8080/fix-json \
       --region ${REGION} \
       --allow-unauthenticated \
       --port 8080 \
-      --set-env-vars JSONFIXER_API_KEY="your-secure-api-key-for-cloud-run"
+      --set-env-vars JSONFIXER_API_KEY="your-secure-api-key-for-cloud-run" # <-- Use this exact variable name!
       # Add --project=${PROJECT_ID} if your default gcloud project is different
       # Replace "your-secure-api-key-for-cloud-run" with your actual key
     ```
 
     -   `--allow-unauthenticated` makes the service publicly accessible. If you remove this, you'll need to handle authentication (e.g., IAM invoker role) *in addition* to the API key. The API key provides application-level authorization.
-    -   `--set-env-vars` is used here to securely pass the API key to the Cloud Run instance. Consider using Secret Manager for more robust secret handling in production.
+    -   `--set-env-vars` is used here to securely pass the API key to the Cloud Run instance using the **required environment variable name `JSONFIXER_API_KEY`**. Consider using Secret Manager for more robust secret handling in production.
     -   Cloud Run automatically handles HTTPS termination.
 
 You will get a service URL upon successful deployment. You can then send POST requests to `[SERVICE_URL]/fix-json`, remembering to include the `X-API-KEY` header.
