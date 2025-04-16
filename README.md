@@ -12,6 +12,7 @@ A simple Java Spring Boot application that provides a REST API endpoint (`/fix-j
     -   Trims leading/trailing whitespace.
     -   Extracts potential JSON object/array from surrounding text.
 -   Returns the repaired JSON string or a JSON error object if parsing fails after repairs.
+-   Requires an API key sent via the `X-API-KEY` header for authorization.
 
 ## Prerequisites
 
@@ -46,17 +47,32 @@ docker run -p 8080:8080 json-fixer-app
 
 The application will be accessible at `http://localhost:8080`.
 
+## Configuration
+
+The application requires an API key for authorization. This key is configured via the `jsonfixer.api.key` property.
+
+-   **Environment Variable (Recommended for Deployment):** Set the `JSONFIXER_API_KEY` environment variable when running the application (e.g., in your Cloud Run service configuration).
+    ```bash
+    export JSONFIXER_API_KEY="your-secure-api-key"
+    java -jar target/json-fixer-*.jar
+    # Or set it in the Docker/Cloud Run environment settings
+    ```
+-   **application.properties (Local Testing/Default):** You can set a default key in `src/main/resources/application.properties`. **Do not commit sensitive keys directly to Git.** The provided `application.properties` uses a placeholder `YOUR_DEFAULT_API_KEY_HERE`.
+
 ## Testing the Endpoint
+
+You need to provide the configured API key in the `X-API-KEY` header with your requests. Replace `your-secure-api-key` with the actual key you configured.
 
 You can use `curl` or any API client (like Postman) to test the `/fix-json` endpoint.
 
-**Example Request (Malformed JSON):**
+**Example Request (Malformed JSON with API Key):**
 
 ```bash
 curl -X POST http://localhost:8080/fix-json \
 -H "Content-Type: text/plain" \
+-H "X-API-KEY: your-secure-api-key" \
 -d '{
-"name": "Test "Product"",
+"name": "Test \"Product\"",
 "description": "This contains a newline\nand typographic quotes like “these”.",
 "valid": true
 }'
@@ -75,9 +91,36 @@ curl -X POST http://localhost:8080/fix-json \
 **Example Request (Unfixable JSON):**
 
 ```bash
+**Example Request (Missing/Invalid API Key):**
+
+```bash
 curl -X POST http://localhost:8080/fix-json \
 -H "Content-Type: text/plain" \
--d 'This is not json { name: "test" '
+-H "X-API-KEY: invalid-key" \
+-d '{"test": 1}'
+
+# Or without the header:
+curl -X POST http://localhost:8080/fix-json \
+-H "Content-Type: text/plain" \
+-d '{"test": 1}'
+```
+
+**Expected Response (Unauthorized):**
+
+```json
+{
+  "error": "Unauthorized",
+  "details": "Valid X-API-KEY header is required."
+}
+```
+
+**Example Request (Unfixable JSON with Valid API Key):**
+
+```bash
+curl -X POST http://localhost:8080/fix-json \
+-H "Content-Type: text/plain" \
+-H "X-API-KEY: your-secure-api-key" \
+-d 'This is not json { name: \"test\" '
 ```
 
 **Expected Response (Error):**
@@ -122,12 +165,17 @@ curl -X POST http://localhost:8080/fix-json \
       --image $IMAGE_TAG \
       --platform managed \
       --region ${REGION} \
+      --platform managed \
+      --region ${REGION} \
       --allow-unauthenticated \
-      --port 8080
+      --port 8080 \
+      --set-env-vars JSONFIXER_API_KEY="your-secure-api-key-for-cloud-run"
       # Add --project=${PROJECT_ID} if your default gcloud project is different
+      # Replace "your-secure-api-key-for-cloud-run" with your actual key
     ```
 
-    -   `--allow-unauthenticated` makes the service publicly accessible. Remove this flag if you want to manage access via IAM.
+    -   `--allow-unauthenticated` makes the service publicly accessible. If you remove this, you'll need to handle authentication (e.g., IAM invoker role) *in addition* to the API key. The API key provides application-level authorization.
+    -   `--set-env-vars` is used here to securely pass the API key to the Cloud Run instance. Consider using Secret Manager for more robust secret handling in production.
     -   Cloud Run automatically handles HTTPS termination.
 
-You will get a service URL upon successful deployment. You can then send POST requests to `[SERVICE_URL]/fix-json`.
+You will get a service URL upon successful deployment. You can then send POST requests to `[SERVICE_URL]/fix-json`, remembering to include the `X-API-KEY` header.

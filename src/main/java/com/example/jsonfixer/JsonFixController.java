@@ -1,9 +1,11 @@
 package com.example.jsonfixer;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader; // Import RequestHeader
 import org.springframework.web.bind.annotation.RestController;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -15,8 +17,28 @@ public class JsonFixController {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    // Inject the expected API key from application properties
+    @Value("${jsonfixer.api.key}")
+    private String expectedApiKey;
+
     @PostMapping("/fix-json")
-    public ResponseEntity<String> fixJson(@RequestBody String potentiallyMalformedJson) {
+    public ResponseEntity<String> fixJson(
+            @RequestHeader(value = "X-API-KEY", required = false) String providedApiKey, // Get API key from header
+            @RequestBody String potentiallyMalformedJson) {
+
+        // Check API Key
+        if (expectedApiKey == null || expectedApiKey.isBlank() || !expectedApiKey.equals(providedApiKey)) {
+             ObjectNode errorJson = objectMapper.createObjectNode();
+             errorJson.put("error", "Unauthorized");
+             errorJson.put("details", "Valid X-API-KEY header is required.");
+             try {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(objectMapper.writeValueAsString(errorJson));
+             } catch (JsonProcessingException ex) {
+                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("{\"error\": \"Failed to create error response\"}");
+             }
+        }
+
+        // Proceed with fixing if API key is valid
         try {
             String fixedJson = repairJson(potentiallyMalformedJson);
             // Try to parse the fixed string to ensure it's valid JSON now
