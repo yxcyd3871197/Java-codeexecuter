@@ -2,7 +2,7 @@ package com.example.jsonfixer;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType; // Keep for error response Content-Type
+import org.springframework.http.MediaType; // Ensure this import is present
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -69,6 +69,15 @@ public class JsonFixController {
         }
     }
 
+
+    // Note: JsonInputDto class needs to exist in the same package or be imported
+    // if the extraction logic below is kept.
+    private static class JsonInputDto { // Define inner class if file was deleted
+        private String data;
+        public String getData() { return data; }
+        public void setData(String data) { this.data = data; }
+    }
+
     private String repairJson(String input) {
         if (input == null || input.isBlank()) {
             return "{}"; // Return empty JSON object for empty input
@@ -81,21 +90,18 @@ public class JsonFixController {
         try {
             // Basic check for the pattern
             if (stringToRepair.trim().startsWith("{\"") && stringToRepair.trim().endsWith("\"}")) {
-                 log.debug("Input looks like it might be an escaped JSON structure: '{}'", stringToRepair);
                  // Use ObjectMapper to parse the *outer* structure
                  ObjectMapper tempMapper = new ObjectMapper();
+                 // Use the inner static DTO class defined above
                  JsonInputDto outerDto = tempMapper.readValue(stringToRepair, JsonInputDto.class);
                  if (outerDto != null && outerDto.getData() != null) {
-                     log.info("Successfully extracted inner string from escaped structure.");
                      stringToRepair = outerDto.getData(); // Use the inner string for repairs
-                 } else {
-                      log.debug("Parsed outer structure but 'data' field was missing or null.");
                  }
             }
         } catch (Exception e) {
             // If parsing the outer structure fails, assume it wasn't the escaped {"data":...} format
             // and proceed with the original input string.
-            log.debug("Failed to parse input as outer escaped structure, proceeding with original input. Error: {}", e.getMessage());
+            // No logging here as logger was removed
         }
         // --- End of extraction attempt ---
 
