@@ -2,6 +2,7 @@ package com.example.jsonfixer;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType; // Re-add MediaType import
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -54,10 +55,11 @@ public class JsonFixController {
         }
 
         // Proceed with fixing if API key is valid
+        String fixedJson = null; // Declare fixedJson outside the try block
         try {
             log.info("Attempting to fix raw input string: '{}'", potentiallyMalformedJson); // Log the raw input
 
-            String fixedJson = repairJson(potentiallyMalformedJson);
+            fixedJson = repairJson(potentiallyMalformedJson); // Assign inside try
             log.info("Repaired JSON string: '{}'", fixedJson); // Log the result of repairJson
 
             // Try to parse the fixed string to ensure it's valid JSON now
