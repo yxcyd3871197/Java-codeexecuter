@@ -29,8 +29,9 @@ public class JsonFixController {
                     .body("{\"error\": \"Invalid or missing API key\"}");
         }
 
+        String fixed = null; // Declare fixed outside the try block
         try {
-            String fixed = repairJson(potentiallyMalformedJson);
+            fixed = repairJson(potentiallyMalformedJson);
 
             objectMapper.readTree(fixed);
 
