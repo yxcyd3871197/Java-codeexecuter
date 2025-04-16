@@ -18,107 +18,47 @@ public class JsonFixController {
 
     @PostMapping("/fix-json")
     public ResponseEntity<String> fixJson(
-            @RequestBody String potentiallyMalformedJson,
+            @RequestBody String input,
             @RequestHeader(value = "X-API-KEY", required = false) String apiKey) {
 
         String expectedKey = System.getenv("JSONFIXER_API_KEY");
-
         if (expectedKey == null || apiKey == null || !expectedKey.equals(apiKey)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .contentType(MediaType.APPLICATION_JSON)
                     .body("{\"error\": \"Invalid or missing API key\"}");
         }
 
-        String fixed = null; // Declare fixed outside the try block
         try {
-            fixed = repairJson(potentiallyMalformedJson);
+            // ✅ Versuch: ist der Input bereits gültig?
+            objectMapper.readTree(input);
+            return ResponseEntity.ok(input); // Nichts zu tun
 
-            objectMapper.readTree(fixed);
-
-            return ResponseEntity.ok(fixed);
-
-        } catch (Exception e) {
-            ObjectNode error = objectMapper.createObjectNode();
-            error.put("error", "Failed to parse JSON after attempting repairs.");
-            error.put("original_input", potentiallyMalformedJson);
-            if (fixed != null) {
-                error.put("attempted_fix", fixed);
+        } catch (Exception e1) {
+            // ❌ reparieren, falls invalide
+            try {
+                String fixed = repairJson(input);
+                objectMapper.readTree(fixed); // nochmal prüfen
+                return ResponseEntity.ok(fixed);
+            } catch (Exception e2) {
+                ObjectNode error = objectMapper.createObjectNode();
+                error.put("error", "Failed to parse JSON after attempting repairs.");
+                error.put("original_input", input);
+                error.put("attempted_fix", repairJson(input));
+                error.put("details", e2.getMessage());
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error.toString());
             }
-            error.put("details", e.getMessage());
-
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(error.toString());
         }
-    }
-
-    private static class JsonInputDto {
-        private String data;
-        public String getData() { return data; }
-        public void setData(String data) { this.data = data; }
     }
 
     private String repairJson(String input) {
-        if (input == null || input.isBlank()) {
-            return "{}";
-        }
+        if (input == null || input.isBlank()) return "{}";
 
-        String stringToRepair = input;
-
-        try {
-            if (stringToRepair.trim().startsWith("{\"") && stringToRepair.trim().endsWith("\"}")) {
-                ObjectMapper tempMapper = new ObjectMapper();
-                JsonInputDto outerDto = tempMapper.readValue(stringToRepair, JsonInputDto.class);
-                if (outerDto != null && outerDto.getData() != null) {
-                    stringToRepair = outerDto.getData();
-                }
-            }
-        } catch (Exception e) {
-        }
-
-        String repaired = stringToRepair;
-
-        repaired = repaired.replace("\\\\\"", "\"");
-        repaired = repaired.replace("\\\\n", "\n");
-        repaired = repaired.replace("\\\\r", "\r");
-        repaired = repaired.replace("\\\\t", "\t");
-
-        repaired = repaired.replace('“', '"').replace('”', '"');
-        repaired = repaired.replace('‘', '\'').replace('’', '\'');
-
-        repaired = repaired.replaceAll("(?<!\\\\)\"(?=[^\\s:,\\}\\]])", "\\\\\"");
-        repaired = repaired.replaceAll("(?<=[^\\s:,\\{\\[])\"(?=\\s*[,\\}\\]])", "\\\\\"");
-
-        repaired = repaired.replaceAll("(?<!\\\\)\\n", "\\\\n");
-        repaired = repaired.replaceAll("(?<!\\\\)\\r", "\\\\r");
-
-        repaired = repaired.trim();
-
-        int firstBrace = repaired.indexOf('{');
-        int firstBracket = repaired.indexOf('[');
-        int start = -1;
-
-        if (firstBrace == -1 && firstBracket == -1) {
-            return repaired;
-        } else if (firstBrace == -1) {
-            start = firstBracket;
-        } else if (firstBracket == -1) {
-            start = firstBrace;
-        } else {
-            start = Math.min(firstBrace, firstBracket);
-        }
-
-        int lastBrace = repaired.lastIndexOf('}');
-        int lastBracket = repaired.lastIndexOf(']');
-        int end = Math.max(lastBrace, lastBracket);
-
-        if (start > 0 || (end != -1 && end < repaired.length() - 1)) {
-            if (end == -1 || start > end) {
-                return repaired;
-            }
-            repaired = repaired.substring(start, end + 1);
-        }
-
-        return repaired;
+        return input
+                .replace("“", "\"")
+                .replace("”", "\"")
+                .replace("‘", "'")
+                .replace("’", "'")
+                .replaceAll("(?<!\\\\)\\n", "\\\\n")
+                .replaceAll("(?<!\\\\)\\r", "\\\\r")
+                .trim();
     }
 }
