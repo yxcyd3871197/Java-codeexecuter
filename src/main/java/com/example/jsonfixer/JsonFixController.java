@@ -103,9 +103,35 @@ public class JsonFixController {
             return "{}"; // Return empty JSON object for empty input
         }
 
-        String repaired = input;
+        String stringToRepair = input; // Start with the original input
 
-        // --- NEW: Attempt basic un-escaping first ---
+        // --- Attempt to detect and extract from escaped {"data": "..."} structure ---
+        // This is a workaround for clients incorrectly sending the JSON structure as text/plain
+        try {
+            // Basic check for the pattern
+            if (stringToRepair.trim().startsWith("{\"") && stringToRepair.trim().endsWith("\"}")) {
+                 log.debug("Input looks like it might be an escaped JSON structure: '{}'", stringToRepair);
+                 // Use ObjectMapper to parse the *outer* structure
+                 ObjectMapper tempMapper = new ObjectMapper();
+                 JsonInputDto outerDto = tempMapper.readValue(stringToRepair, JsonInputDto.class);
+                 if (outerDto != null && outerDto.getData() != null) {
+                     log.info("Successfully extracted inner string from escaped structure.");
+                     stringToRepair = outerDto.getData(); // Use the inner string for repairs
+                 } else {
+                      log.debug("Parsed outer structure but 'data' field was missing or null.");
+                 }
+            }
+        } catch (Exception e) {
+            // If parsing the outer structure fails, assume it wasn't the escaped {"data":...} format
+            // and proceed with the original input string.
+            log.debug("Failed to parse input as outer escaped structure, proceeding with original input. Error: {}", e.getMessage());
+        }
+        // --- End of extraction attempt ---
+
+
+        String repaired = stringToRepair; // Use the potentially extracted string
+
+        // --- Attempt basic un-escaping (useful if extraction didn't happen or inner string is still escaped) ---
         // This handles cases where the input might have been accidentally escaped
         // (e.g., sending a JSON string literal as the body)
         log.debug("Before un-escaping: '{}'", repaired);
