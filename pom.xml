@@ -16,10 +16,16 @@
     <properties>
         <java.version>21</java.version>
     </properties>
-    <dependencies>
+<dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Add this dependency to resolve MediaType -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-webmvc</artifactId>
         </dependency>
 
         <!-- Optional: For more robust JSON handling if needed later -->
