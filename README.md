@@ -62,48 +62,49 @@ The application requires an API key for authorization. This key is configured vi
 
 ## Testing the Endpoint
 
-You need to provide the configured API key in the `X-API-KEY` header and send the request body as `application/json` with the following structure:
-
-```json
-{
-  "data": "string_containing_potentially_malformed_json"
-}
-```
+You need to provide the configured API key in the `X-API-KEY` header with your requests. The request body should be sent with `Content-Type: text/plain` (or similar, like `application/octet-stream`) containing the raw, potentially malformed string.
 
 Replace `your-secure-api-key` with the actual key you configured.
 
-**Example Request (Malformed JSON String within JSON Body):**
-
-This example uses the malformed string from your previous test case within the required JSON structure.
+**Example Request (Malformed JSON as Plain Text):**
 
 ```bash
+# Note: Use single quotes for the -d data to avoid shell interpretation issues with quotes inside.
+# Or escape quotes carefully if using double quotes for -d.
 curl -X POST http://localhost:8080/fix-json \
--H "Content-Type: application/json" \
+-H "Content-Type: text/plain" \
 -H "X-API-KEY: your-secure-api-key" \
 -d '{
-"data": "{ \"text\": \"Hallo \\\"Welt\\\" – dies ist ein Test mit \\“komischen\\” Zeichen und Zeilen\\numbrüchen.\\\" }"
+"name": "Test \"Product\"",
+"description": "This contains a newline\nand typographic quotes like “these”.",
+"valid": true
 }'
 ```
 
 **Expected Response (Repaired JSON String as Plain Text):**
 
 ```json
-{ "text": "Hallo \"Welt\" – dies ist ein Test mit \"komischen\" Zeichen und Zeilen\numbrüchen." }
+{
+"name": "Test \"Product\"",
+"description": "This contains a newline\\nand typographic quotes like \"these\".",
+"valid": true
+}
 ```
-*(Note: The response `Content-Type` is `text/plain`, containing the repaired JSON string)*
+*(Note: The response `Content-Type` is `text/plain`)*
+
 
 **Example Request (Missing/Invalid API Key):**
 
 ```bash
 curl -X POST http://localhost:8080/fix-json \
--H "Content-Type: application/json" \
+-H "Content-Type: text/plain" \
 -H "X-API-KEY: invalid-key" \
--d '{"data": "some string"}'
+-d '{"test": 1}'
 
 # Or without the header:
 curl -X POST http://localhost:8080/fix-json \
--H "Content-Type: application/json" \
--d '{"data": "some string"}'
+-H "Content-Type: text/plain" \
+-d '{"test": 1}'
 ```
 
 **Expected Response (Unauthorized - JSON):**
@@ -116,33 +117,14 @@ curl -X POST http://localhost:8080/fix-json \
 ```
 *(Note: Error responses are `application/json`)*
 
-**Example Request (Invalid Input JSON Format):**
+
+**Example Request (Unfixable String):**
 
 ```bash
 curl -X POST http://localhost:8080/fix-json \
--H "Content-Type: application/json" \
+-H "Content-Type: text/plain" \
 -H "X-API-KEY: your-secure-api-key" \
--d '{"wrong_field": "some string"}' # Missing the 'data' field
-```
-
-**Expected Response (Bad Request - JSON):**
-
-```json
-{
-  "error": "Invalid input format.",
-  "details": "Request body must be JSON with a 'data' field containing the string to fix."
-}
-```
-
-**Example Request (Unfixable String within 'data'):**
-
-```bash
-curl -X POST http://localhost:8080/fix-json \
--H "Content-Type: application/json" \
--H "X-API-KEY: your-secure-api-key" \
--d '{
-"data": "This is just text, not json { nope"
-}'
+-d 'This is not json { name: \"test\" '
 ```
 
 **Expected Response (Bad Request - JSON):**
@@ -150,11 +132,11 @@ curl -X POST http://localhost:8080/fix-json \
 ```json
 {
   "error": "Failed to parse JSON after attempting repairs.",
-  "original_input": "This is just text, not json { nope",
-  "attempted_fix": "This is just text, not json { nope",
-  "details": "Unexpected end-of-input: expected close marker for Object (start marker at [Source: (String)\"This is just text, not json { nope\"; line: 1, column: 30])\n at [Source: (String)\"This is just text, not json { nope\"; line: 1, column: 36]"
+  "original_input": "This is not json { name: \"test\" ",
+  "attempted_fix": "{ name: \"test\" ",
+  "details": "Unexpected character ('n' (code 110)): was expecting double-quote to start field name\n at [Source: (String)\"{ name: \"test\" \"; line: 1, column: 4]"
 }
-# Note: The exact error message might vary.
+# Note: The exact error message might vary slightly based on the input and Jackson version.
 ```
 
 

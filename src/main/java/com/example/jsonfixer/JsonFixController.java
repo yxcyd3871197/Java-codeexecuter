@@ -3,7 +3,6 @@ package com.example.jsonfixer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.MediaType; // Import MediaType
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -26,63 +25,58 @@ public class JsonFixController {
     @Value("${jsonfixer.api.key}")
     private String expectedApiKey;
 
-    // Consume application/json and produce text/plain (the fixed JSON string)
-    @PostMapping(value = "/fix-json", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.TEXT_PLAIN_VALUE)
+    @PostMapping("/fix-json") // Revert endpoint definition
     public ResponseEntity<String> fixJson(
-            @RequestHeader(value = "X-API-KEY", required = true) String providedApiKey,
-            @RequestBody JsonInputDto inputDto) { // Use the DTO
+            @RequestHeader(value = "X-API-KEY", required = true) String providedApiKey, // Header is now required
+            @RequestBody String potentiallyMalformedJson) { // Revert to String RequestBody
 
         // Log the received and expected keys for debugging (avoid logging sensitive keys in production long-term)
-        log.info("Received X-API-KEY: '{}'", providedApiKey);
+        log.info("Received X-API-KEY: '{}'", providedApiKey); // Log received key
         log.info("Expected API Key configured: '{}'", expectedApiKey != null && !expectedApiKey.isBlank() ? "Present" : "MISSING/BLANK"); // Log if expected key is present
+
+        log.info("Expected API Key configured: '{}'", expectedApiKey != null && !expectedApiKey.isBlank() ? "Present" : "MISSING/BLANK");
 
         log.info("Expected API Key configured: '{}'", expectedApiKey != null && !expectedApiKey.isBlank() ? "Present" : "MISSING/BLANK");
 
         // Check API Key
         if (expectedApiKey == null || expectedApiKey.isBlank() || !expectedApiKey.equals(providedApiKey)) {
-             log.warn("API Key validation failed. Provided: '{}', Expected: '{}'", providedApiKey, expectedApiKey);
+             log.warn("API Key validation failed. Provided: '{}', Expected: '{}'", providedApiKey, expectedApiKey); // Log failure details
              ObjectNode errorJson = objectMapper.createObjectNode();
              errorJson.put("error", "Unauthorized");
              errorJson.put("details", "Invalid or missing X-API-KEY header."); // Slightly updated details message
              try {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(objectMapper.writeValueAsString(errorJson));
+                 // Return error as JSON for consistency, even though input is text/plain
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).contentType(MediaType.APPLICATION_JSON).body(objectMapper.writeValueAsString(errorJson));
              } catch (JsonProcessingException ex) {
-                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("{\"error\": \"Failed to create error response\"}");
+                 log.error("Failed to create JSON error response", ex);
+                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).contentType(MediaType.APPLICATION_JSON).body("{\"error\": \"Failed to create error response\"}");
              }
         }
 
         // Proceed with fixing if API key is valid
         try {
-            if (inputDto == null || inputDto.getData() == null) {
-                 // Handle cases where the input JSON is missing the 'data' field
-                 ObjectNode errorJson = objectMapper.createObjectNode();
-                 errorJson.put("error", "Invalid input format.");
-                 errorJson.put("details", "Request body must be JSON with a 'data' field containing the string to fix.");
-                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).contentType(MediaType.APPLICATION_JSON).body(objectMapper.writeValueAsString(errorJson));
-            }
-
-            String potentiallyMalformedJson = inputDto.getData(); // Get the string from the DTO
-            log.info("Attempting to fix JSON string: '{}'", potentiallyMalformedJson); // Log the string we're fixing
+            log.info("Attempting to fix raw input string: '{}'", potentiallyMalformedJson); // Log the raw input
 
             String fixedJson = repairJson(potentiallyMalformedJson);
             log.info("Repaired JSON string: '{}'", fixedJson); // Log the result of repairJson
 
             // Try to parse the fixed string to ensure it's valid JSON now
-            objectMapper.readTree(fixedJson); // This still validates the *result* is valid JSON
-            return ResponseEntity.ok(fixedJson);
+            objectMapper.readTree(fixedJson);
+            // Return the fixed string as plain text
+            return ResponseEntity.ok().contentType(MediaType.TEXT_PLAIN).body(fixedJson);
         } catch (JsonProcessingException e) {
             // If parsing still fails after repair attempts
             log.warn("Parsing failed even after repair attempts for input: '{}'. Error: {}", potentiallyMalformedJson, e.getMessage());
             ObjectNode errorJson = objectMapper.createObjectNode();
             errorJson.put("error", "Failed to parse JSON after attempting repairs.");
-            errorJson.put("original_input", potentiallyMalformedJson); // Include original input for debugging
-            errorJson.put("attempted_fix", fixedJson); // Include the attempted fix
+            errorJson.put("original_input", potentiallyMalformedJson);
+            errorJson.put("attempted_fix", fixedJson);
             errorJson.put("details", e.getMessage());
             try {
                 // Return error as JSON
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).contentType(MediaType.APPLICATION_JSON).body(objectMapper.writeValueAsString(errorJson));
             } catch (JsonProcessingException ex) {
-                log.error("Failed to create JSON error response", ex);
+                 log.error("Failed to create JSON error response", ex);
                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).contentType(MediaType.APPLICATION_JSON).body("{\"error\": \"Failed to create error response\"}");
             }
         } catch (Exception e) {
