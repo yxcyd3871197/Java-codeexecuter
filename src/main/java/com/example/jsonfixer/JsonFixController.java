@@ -105,6 +105,17 @@ public class JsonFixController {
 
         String repaired = input;
 
+        // --- NEW: Attempt basic un-escaping first ---
+        // This handles cases where the input might have been accidentally escaped
+        // (e.g., sending a JSON string literal as the body)
+        log.debug("Before un-escaping: '{}'", repaired);
+        repaired = repaired.replace("\\\\\"", "\""); // \\" -> "
+        repaired = repaired.replace("\\\\n", "\n");   // \\n -> \n
+        repaired = repaired.replace("\\\\r", "\r");   // \\r -> \r
+        repaired = repaired.replace("\\\\t", "\t");   // \\t -> \t
+        // Add more if needed, e.g., \\/ -> /
+        log.debug("After un-escaping: '{}'", repaired);
+
         // 1. Replace typographic quotes with standard double quotes
         repaired = repaired.replace('“', '"').replace('”', '"');
         repaired = repaired.replace('‘', '\'').replace('’', '\''); // Replace typographic single quotes if needed, though JSON uses double
